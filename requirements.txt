@@ -1,0 +1,2 @@
+# Runtime dependency. Unpinned on purpose; see README for the tested version.
+music-assistant-client

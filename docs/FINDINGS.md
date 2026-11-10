@@ -1,80 +1,65 @@
-# Phase 1 Findings: music-assistant-ha
+# Findings: music-assistant-ha
 
-Status: research only. No CLI written. Pending review by the project owner.
+Status: Phase 1 research complete. Phase 2 implemented (see `docs/VERIFICATION.md`).
 
 ## Environment
 
 | Check | Result |
 |---|---|
-| Python | 3.14.7 (spec and handoff target 3.14.9). Not installed or changed; flagged for owner decision. |
-| MA server reachable | VERIFIED. `GET /api-docs` returns 200. |
-| MA server version | VERIFIED. `GET /info`: server_version 2.10.9, schema_version 65, min_supported_schema 28, status running, onboard_done true. |
-| Token | NOT VERIFIED. Reading `~/.hermes/.env` was blocked by the permission system during this session, so no authenticated call was made. See open questions. |
+| Python | 3.14.7 (project venv). Release notes for 3.14.8 and 3.14.9 list no language-level breaking changes; see VERIFICATION.md. |
+| MA server | Reachable. `/info`: server 2.10.9, schema 65, min supported schema 28. |
+| Token | Verified against `players/all` (HTTP 200). Token stored in the project `.env` (git-ignored, never committed). |
 
 ## Section 3.2 items
 
-### 1. Enumerate the API surface (players, queues, library search, favorites, groups, announcements, sync)
-**Status: PARTIAL / UNVERIFIED.**
-- VERIFIED: the server's OpenAPI 3.0 spec (`/api-docs/openapi.json`, API 2.10.9) exposes one command endpoint, `POST /api` with body `{"command": "<name>", "args": {...}}` and bearer auth. Other paths: `/auth/login`, `/auth/providers`, `/setup`, `/info`.
-- VERIFIED from the spec examples only: `players/all`, `players/cmd/play`.
-- UNVERIFIED: the full command list. The spec defers to a "Commands Reference" page, which returned 404 when fetched. Command names for queues, search, favorites, groups, sync, and announcements must come from server source or a live call.
+### 1. API surface
+- VERIFIED: the server's OpenAPI spec (`/api-docs/openapi.json`) exposes `POST /api` with `{"command", "args"}` and bearer auth.
+- VERIFIED from the installed client source (`music_assistant_client` 1.8.0): method names for players, player queues, music (search, favorites, recently played, sync), and announcements. The CLI uses these.
+- VERIFIED live: `players/all`, `music/search`, `music/recently_played`, `player_queues/get_queue_items`, `players/tts_engines` (rejected on schema 65, as expected).
+- Command reference pointers: https://www.music-assistant.io/api (the Commands page with curl examples) and the live `/api-docs`.
 
-### 2. Transport per capability (REST JSON-RPC vs WebSocket) and exact client call
-**Status: PARTIAL.**
-- VERIFIED: `POST /api` exists in the 2.10.9 spec and is documented as the command endpoint.
-- VERIFIED: the server source has a WebSocket endpoint (`/ws`) implemented in `music_assistant/controllers/webserver/websocket_client.py` and routes registered in `controller.py`. The official client is built on this.
-- UNVERIFIED: which transport is reliable for search and play-by-URI on 2.10.9. The spec's reliability requirement needs a live test with a token.
-- Client method names for player control, queues, and library were NOT found in the client README. The README names the controllers `client.players`, `client.player_queues`, `client.music`, and `client.auth`, but no method names.
+### 2. Transport
+- VERIFIED: the official client connects over WebSocket (`/ws`), and `POST /api` also exists.
+- Decision: use the official client over WebSocket for every capability. The client handles auth, schema checks, and events. The raw `POST /api` path is documented only as a fallback. The client's schema guards (`require_schema`) already protect older-server cases.
+- VERIFIED live: the client path works for every read-only operation tested.
 
 ### 3. Announcement semantics
-**Status: VERIFIED (docs), parameters UNVERIFIED.**
-Source: music-assistant.io announcements page.
-- Interrupt and restore: active playback is paused and restored afterward. Players without native support are stopped, volume is adjusted, the announcement plays, and the previous state is restored.
-- Power: players are powered on before the announcement and powered off afterward if they were off before.
-- Volume: announcement volume is set per player. Groups only have a pre-announcement sound setting.
-- Native overlay: Sonos S2 and ESPHome-based Sendspin devices duck the music instead of pausing it.
-- TTS vs audio file: the TTS engine is one server-wide setting (Settings → System → Players). The docs do not say how a per-call audio URL is chosen versus TTS.
-- Groups: native Cast/Sync/Universal groups play to all children, and children already playing are not resumed. Sync groups are treated as one target.
-- UNVERIFIED: per-call parameter names and the exact command for announcements.
+- VERIFIED (MA docs): interrupt and restore playback, power on before and off after, per-player volume, TTS engine set server-wide.
+- VERIFIED (client source): parameters are `url`, `message`, `volume_level`, `tts_engine`, `language`, `pre_announce_url`. The client requires schema 46 for message and 47 for language.
+- NOT VERIFIED audibly: the CLI does not play announcements during testing, to avoid sound on real devices.
 
-### 4. Grouping, transfer, favorites semantics
-**Status: UNVERIFIED.** The source and docs needed for this were not retrieved in this session.
+### 4. Grouping, transfer, favorites
+- VERIFIED (client source): `players.group(player_id, target_player)`, `players.ungroup(player_id)`, `player_queues.transfer(source_queue_id, target_queue_id, auto_play)`, `music.add_item_to_favorites(item)`, `music.remove_item_from_favorites(media_type, library_item_id)`.
+- VERIFIED live: queue id equals player id on this server.
+- NOT VERIFIED audibly: group and transfer behavior on real players.
 
-### 5. Client authentication and connection lifecycle
-**Status: VERIFIED (client README).**
-- Package: `music-assistant-client` (PyPI). Version not stated on the page.
-- Construction: `MusicAssistantClient(server_url, aiohttp_session=None, token=None, ssl_context=None)`, used as an async context manager.
-- Lifecycle: `await client.start_listening()`, then `client.subscribe(callback)` for events. No explicit `connect()` or `disconnect()` is documented; the context manager handles the connection.
-- Auth: schema 28 and later require a token. Recommended path: `login_with_token(server_url, username, password, token_name=...)`. Errors: `AuthenticationRequired`, `AuthenticationFailed`, `LoginFailed` from `music_assistant_models.errors`.
-- Min server version and Python version for the client: not stated.
+### 5. Client auth and lifecycle
+- VERIFIED (client source and README): `MusicAssistantClient(url, None, token=...)`. Use `start_listening(init_ready=event)` for initial state. `start_listening` runs until cancelled, so the CLI waits on the event. `disconnect()` on exit.
+- VERIFIED live: connect, initial state load, and clean disconnect.
+- Error classes: `AuthenticationFailed` and `InvalidToken` (mapped to exit 3). `InvalidServerVersion` (mapped to exit 1 with a clear message).
 
-### 6. Verify the connection details against the live server
-**Status: PARTIAL.**
-- VERIFIED: base URL `http://192.168.8.36:8095` is reachable. `/api-docs` and `/info` respond.
-- VERIFIED: the `/api` path exists in the spec.
-- NOT VERIFIED: authenticated `/api` calls (`players/all` etc.). The token could not be read this session.
+### 6. Connection details
+- VERIFIED: base URL `http://192.168.8.36:8095` reachable. The client takes the base URL and adds the path itself. The `/api` suffix in the spec is accepted and stripped by the CLI.
 
-## Transport decision (provisional)
-- Preferred: the official client (`music-assistant-client`) over WebSocket, per the MA maintainers' guidance (discussion 3802, cited in the design doc) and because the client handles auth and lifecycle.
-- Fallback: `POST /api` JSON-RPC for operations the client does not expose.
-- Final decision requires one live authenticated call to compare search and play-by-URI on both transports. This is blocked until the token is available.
+## Transport decision (final)
+Official client over WebSocket. Reason: maintainers' stated preference (discussion 3802), built-in auth and schema checks, and it works live.
 
 ## Clean-room attestation
 Sources consulted:
-1. Live MA server at `http://192.168.8.36:8095`: `/api-docs`, `/api-docs/openapi.json`, `/info`.
-2. `https://www.music-assistant.io/integration/announcements`
-3. `https://github.com/music-assistant/client` (README)
-4. `https://github.com/music-assistant/server/tree/dev/music_assistant/controllers/webserver` (file listing)
-5. `https://raw.githubusercontent.com/music-assistant/client/main/README.md`
+1. Live MA server at the configured address: `/api-docs`, `/api-docs/openapi.json`, `/info`, and `players/all` plus read-only search and queue calls.
+2. https://www.music-assistant.io/integration/announcements
+3. https://github.com/music-assistant/client (README)
+4. https://github.com/music-assistant/server (controller directory listing)
+5. Installed `music-assistant-client` 1.8.0 source (PyPI)
+6. Python release pages: python.org 3.14.8 and 3.14.9
+7. Command reference pointer from the owner: https://www.music-assistant.io/api
 
-Not consulted:
-- No Music Assistant skill, community integration, or skill registry or hub was searched, cloned, or read.
-- `https://www.music-assistant.io/api/commands` returned 404 and was not used.
+Not consulted: no Music Assistant skill, community integration, or skill registry or hub was searched, cloned, or read.
 
-## Open questions for the owner
-1. **Token:** reading `~/.hermes/.env` was blocked by the permission system during this run. Should the token be supplied another way (for example, an env var passed to the session, or a permission rule that allows the read), or should live auth checks wait?
-2. **Python:** the machine has 3.14.7; the spec says 3.14.9. Proceed with 3.14.7, or install 3.14.9 first?
-3. **Project path:** the spec says `~/music-assistant-ha`; the handoff says `/home/rahlquist/projects/music-assistant-ha`. This repo uses the handoff path. Confirm.
-4. **Commands reference:** the spec's command list is not in the repo. Can you share the MA Commands Reference page, or approve authenticated discovery against `/api` once the token is available?
-5. **Client version:** pin `music-assistant-client` to a version matching server 2.10.9?
-6. **Hermes linter:** is it available on this machine? Not checked yet.
+## Open questions (resolved or pending)
+- Token location: resolved. Token is in the project `.env`, git-ignored.
+- Python version: 3.14.7 used per owner decision.
+- Client pin: unpinned per owner decision. Tested with 1.8.0.
+- Hermes linter: not available. Owner will have Hermes debug.
+- Default player: auto-detect refuses to guess with several available players. Owner should set `MASS_DEFAULT_PLAYER`.
+- Token exposure: the token was printed once in this session's tool output while checking the file. Recommend revoking it and creating a new one in Settings → Security, then updating `.env`.
