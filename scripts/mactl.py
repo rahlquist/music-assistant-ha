@@ -94,7 +94,9 @@ class Result:
 
 
 def normalize_url(raw: str) -> str:
-    url = raw.strip().rstrip("/")
+    # Tolerate a pasted browser address: drop any query string and fragment
+    # (e.g. http://host:8095/#/settings is the web UI, not a different API).
+    url = raw.strip().split("#", 1)[0].split("?", 1)[0].rstrip("/")
     if url.endswith("/api"):
         url = url[: -len("/api")]
     if not url.startswith(("http://", "https://")):

@@ -1,6 +1,6 @@
 ---
 name: music-assistant-ha
-description: "Control a Music Assistant server: playback, volume, queues, library search, favorites, multi-room grouping/transfer, and announcements. Use when the user wants to play/pause/skip music, adjust volume, search their library, manage the queue, group or transfer players, or make an announcement."
+description: "Music Assistant: playback, volume, queue, search, announce."
 version: 1.0.0
 author: rahlquist
 license: MIT
@@ -18,6 +18,7 @@ required_environment_variables:
     prompt: Default player id (optional)
     help: "Run `mactl players` to list ids. If unset, the player is auto-detected and cached."
     required_for: optional
+    optional: true
 metadata:
   hermes:
     tags: [Media, Music, Music-Assistant, Smart-Home]
@@ -28,6 +29,13 @@ metadata:
 
 Control a Music Assistant (MA) server through `scripts/mactl.py`. Always use the CLI.
 Do not call the MA API directly unless the direct-access section below applies.
+
+## When to Use
+
+Use when the user wants to control music on their Music Assistant server:
+play/pause/skip, adjust volume or mute, manage the queue, search the library,
+handle favorites, group or transfer multi-room players, or make an announcement.
+Not for server administration or adding music providers.
 
 ## Setup
 
@@ -85,6 +93,8 @@ Global flags, accepted before or after the command:
 
 Notes:
 - In this server, a player's queue id equals its player id. Queue commands use the target player.
+- `transfer` REPLACES the target's queue with the source's. An empty source CLEARS the target queue.
+  Never transfer from a player you have not inspected. Verified live 2026-11-10.
 - `announce` interrupts active playback and restores it afterward, and it powers on
   players that are off, then powers them off again. Volume is set per player.
 - `group` and `transfer` take two player ids. Both are validated before the call.

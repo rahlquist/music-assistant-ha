@@ -85,6 +85,9 @@ def run_handler(name, client, context, args):
 def test_normalize_url_strips_api_suffix_and_slash():
     assert mactl.normalize_url("http://h:8095/api/") == "http://h:8095"
     assert mactl.normalize_url("  https://h.example/ ") == "https://h.example"
+    # pasted web-UI addresses must not poison the API base URL
+    assert mactl.normalize_url("http://h:8095/#/settings") == "http://h:8095"
+    assert mactl.normalize_url("https://h:8095/api/?x=1#/players") == "https://h:8095"
 
 
 def test_normalize_url_rejects_bare_host():
