@@ -92,7 +92,7 @@ def test_normalize_url_strips_api_suffix_and_slash():
 
 def test_normalize_url_rejects_bare_host():
     with pytest.raises(mactl.ConfigError, match="http"):
-        mactl.normalize_url("192.168.8.36:8095")
+        mactl.normalize_url("192.0.2.10:8095")
 
 
 def test_load_config_reports_missing_names_not_values():

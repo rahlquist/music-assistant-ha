@@ -39,7 +39,7 @@ Status: Phase 1 research complete. Phase 2 implemented (see `docs/VERIFICATION.m
 - Error classes: `AuthenticationFailed` and `InvalidToken` (mapped to exit 3). `InvalidServerVersion` (mapped to exit 1 with a clear message).
 
 ### 6. Connection details
-- VERIFIED: base URL `http://192.168.8.36:8095` reachable. The client takes the base URL and adds the path itself. The `/api` suffix in the spec is accepted and stripped by the CLI.
+- VERIFIED: base URL `http://<ma-host>:8095` reachable. The client takes the base URL and adds the path itself. The `/api` suffix in the spec is accepted and stripped by the CLI.
 
 ## Transport decision (final)
 Official client over WebSocket. Reason: maintainers' stated preference (discussion 3802), built-in auth and schema checks, and it works live.
